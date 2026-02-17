@@ -1,6 +1,7 @@
 #ifndef _MATH_H
 #define _MATH_H
 
+// FLOAT
 typedef struct Vector2f
 {
     float x, y;
@@ -15,5 +16,22 @@ typedef struct Vector4f
 {
     float x, y, z, w;
 } Vector4f;
+
+
+// INTEGER
+typedef struct Vector2i
+{
+    int x, y;
+} Vector2i;
+
+typedef struct Vector3i
+{
+    int x, y, z;
+} Vector3i;
+
+typedef struct Vector4i
+{
+    int x, y, z, w;
+} Vector4i;
 
 #endif

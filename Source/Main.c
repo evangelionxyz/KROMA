@@ -3,14 +3,31 @@
 #include "GraphicsPipeline.h"
 #include "Shader.h"
 #include "Buffers.h"
+#include "Renderer.h"
 
 #include "Math.h"
 
-typedef struct Vertex2D
+#include "cglm/cglm.h"
+
+typedef struct Camera
 {
-    Vector2f position;
-    Vector4f color;
-} Vertex2D;
+    vec3 position;
+    mat4 view;
+    mat4 projection;
+    Vector2i size;
+} Camera;
+
+void camera_update_matrices(Camera *camera, int width, int height, mat4 view_projection)
+{
+    camera->size.x = width;
+    camera->size.y = height;
+
+    const float aspect = (float)width / (float)height;
+    glm_perspective(glm_rad(45.0f), aspect, 0.1f, 500.0f, camera->projection);
+    glm_lookat(camera->position, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0.0f, 1.0f, 0.0f}, camera->view);
+
+    glm_mat4_mul(camera->projection, camera->view, view_projection);
+}
 
 int main(int argc, char **argv)
 {
@@ -19,6 +36,9 @@ int main(int argc, char **argv)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize SDL: %s", SDL_GetError());
         return -1;
     }
+
+    int SCREEN_WIDTH = 720;
+    int SCREEN_HEIGHT = 540;
     
     Window window = {0};
     create_window(&window, "KROMA", 720, 540);
@@ -28,8 +48,8 @@ int main(int argc, char **argv)
     SDL_GPUTextureCreateInfo scene_texture_info = {0};
     scene_texture_info.type = SDL_GPU_TEXTURETYPE_2D;
     scene_texture_info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    scene_texture_info.width = 720;
-    scene_texture_info.height = 540;
+    scene_texture_info.width = SCREEN_WIDTH;
+    scene_texture_info.height = SCREEN_HEIGHT;
     scene_texture_info.layer_count_or_depth = 1;
     scene_texture_info.num_levels = 1;
     scene_texture_info.sample_count = SDL_GPU_SAMPLECOUNT_1;
@@ -48,23 +68,14 @@ int main(int argc, char **argv)
 
     SDL_GPUSampler *sampler = SDL_CreateGPUSampler(window.device, &sampler_info);
 
-    // Create quad vertex buffer
-    Vertex2D quad_vertices[] = {
-        { .position = {-0.5f, -0.5f}, .color = {1.0f, 1.0f, 0.0f, 1.0f} },  // Bottom-left
-        { .position = { 0.5f, -0.5f}, .color = {1.0f, 1.0f, 0.0f, 1.0f} },  // Bottom-right
-        { .position = { 0.5f,  0.5f}, .color = {1.0f, 1.0f, 0.0f, 1.0f} },  // Top-right
-        { .position = {-0.5f,  0.5f}, .color = {1.0f, 1.0f, 0.0f, 1.0f} }   // Top-left
-    };
-
-    VertexBuffer vertex_buffer = vertex_buffer_create(window.device, quad_vertices, sizeof(quad_vertices), ARRAY_SIZE(quad_vertices));
-
-    uint16_t quad_indices[] =
+    // Initialize batch renderer (supports up to 1 million quads)
+    BatchRenderer2D batch_renderer = {0};
+    if (!batch_renderer_2d_init(&batch_renderer, window.device))
     {
-        0, 1, 2,
-        2, 3, 0
-    };
-
-    IndexBuffer index_buffer = index_buffer_create(window.device, quad_indices, sizeof(quad_indices), ARRAY_SIZE(quad_indices));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to initialize batch renderer");
+        SDL_Quit();
+        return -1;
+    }
 
     SDL_GPUGraphicsPipeline *composite_pipeline = NULL;
     SDL_GPUGraphicsPipeline *two_dimension_pipeline = NULL;
@@ -72,12 +83,42 @@ int main(int argc, char **argv)
     SDL_Event event;
     bool running = true;
 
+    // Create uniform buffer for view-projection matrix
+    UniformBuffer view_projection_buffer = uniform_buffer_create(window.device, sizeof(mat4));
+
+    Camera camera;
+    glm_vec3_zero(camera.position);
+    camera.position[2] = -8.0f;
+
+    mat4 view_projection;
+    camera_update_matrices(&camera, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT, view_projection);
+    uniform_buffer_update(window.device, &view_projection_buffer, view_projection, sizeof(mat4));
+
     while (running)
     {
         while (SDL_PollEvent(&event))
         {
             switch (event.type)
             {
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                {
+                    SCREEN_WIDTH = event.window.data1;
+                    SCREEN_HEIGHT = event.window.data2;
+                    
+                    // Recreate scene texture with new dimensions
+                    if (scene_texture)
+                    {
+                        SDL_ReleaseGPUTexture(window.device, scene_texture);
+                    }
+                    scene_texture_info.width = SCREEN_WIDTH;
+                    scene_texture_info.height = SCREEN_HEIGHT;
+                    scene_texture = SDL_CreateGPUTexture(window.device, &scene_texture_info);
+                    
+                    // Update camera immediately
+                    camera_update_matrices(&camera, SCREEN_WIDTH, SCREEN_HEIGHT, view_projection);
+                    uniform_buffer_update(window.device, &view_projection_buffer, view_projection, sizeof(mat4));
+                    break;
+                }
                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 {
                     running = false;
@@ -240,17 +281,11 @@ int main(int argc, char **argv)
             shader_release(window.device, &fragment_shader);
         }
         
-        SDL_GPUCommandBuffer *command_buffer = SDL_AcquireGPUCommandBuffer(window.device);
-        if (!command_buffer)
-        {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to acquire GPU command buffer: %s", SDL_GetError());
-            break;
-        }
-
+        SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(window.device);
         Swapchain swapchain = {0};
-        if (!swapchain_acquire(command_buffer, &window, &swapchain))
+        if (!swapchain_acquire(cmd, &window, &swapchain))
         {
-            SDL_CancelGPUCommandBuffer(command_buffer);
+            SDL_CancelGPUCommandBuffer(cmd);
             break;
         }
 
@@ -266,23 +301,38 @@ int main(int argc, char **argv)
             scene_target_info.store_op = SDL_GPU_STOREOP_STORE;
             scene_target_info.cycle = false;
 
-            SDL_GPURenderPass *scene_pass = SDL_BeginGPURenderPass(command_buffer, &scene_target_info, 1, NULL);
+            SDL_GPURenderPass *scene_pass = SDL_BeginGPURenderPass(cmd, &scene_target_info, 1, NULL);
             if (scene_pass && two_dimension_pipeline)
             {
                 SDL_BindGPUGraphicsPipeline(scene_pass, two_dimension_pipeline);
                 
-                SDL_GPUBufferBinding vertex_binding = {0};
-                vertex_binding.buffer = vertex_buffer.buffer;
-                vertex_binding.offset = 0;
+                // Bind uniform buffer
+                SDL_GPUBufferBinding uniform_binding = {0};
+                uniform_binding.buffer = view_projection_buffer.buffer;
+                uniform_binding.offset = 0;
+                SDL_BindGPUVertexStorageBuffers(scene_pass, 0, &uniform_binding, 1);
                 
-                SDL_BindGPUVertexBuffers(scene_pass, 0, &vertex_binding, 1);
+                // Build batch of quads
+                batch_renderer_2d_begin(&batch_renderer);
                 
-                SDL_GPUBufferBinding index_binding = {0};
-                index_binding.buffer = index_buffer.buffer;
-                index_binding.offset = 0;
+                // Example: Add a few test quads
+                batch_renderer_2d_add_quad(&batch_renderer, 
+                    (Vector2f){0.0f, 0.0f}, (Vector2f){1.0f, 1.0f}, 
+                    (Vector4f){1.0f, 1.0f, 0.0f, 1.0f});
                 
-                SDL_BindGPUIndexBuffer(scene_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-                SDL_DrawGPUIndexedPrimitives(scene_pass, index_buffer.num_indices, 1, 0, 0, 0);
+                batch_renderer_2d_add_quad(&batch_renderer, 
+                    (Vector2f){2.0f, 0.0f}, (Vector2f){0.8f, 0.8f}, 
+                    (Vector4f){1.0f, 0.0f, 0.0f, 1.0f});
+                
+                batch_renderer_2d_add_quad(&batch_renderer, 
+                    (Vector2f){-2.0f, 0.0f}, (Vector2f){0.6f, 0.6f}, 
+                    (Vector4f){0.0f, 1.0f, 1.0f, 1.0f});
+                
+                batch_renderer_2d_end(&batch_renderer);
+                
+                // Draw all batched quads
+                batch_renderer_2d_draw(&batch_renderer, scene_pass);
+                
                 SDL_EndGPURenderPass(scene_pass);
             }
         }
@@ -300,7 +350,7 @@ int main(int argc, char **argv)
             color_target_info.store_op = SDL_GPU_STOREOP_STORE;
             color_target_info.cycle = false;
 
-            SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(command_buffer, &color_target_info, 1, NULL);
+            SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmd, &color_target_info, 1, NULL);
             if (render_pass && composite_pipeline)
             {
                 SDL_BindGPUGraphicsPipeline(render_pass, composite_pipeline);
@@ -315,7 +365,7 @@ int main(int argc, char **argv)
             }
         }
 
-        if (!SDL_SubmitGPUCommandBuffer(command_buffer))
+        if (!SDL_SubmitGPUCommandBuffer(cmd))
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to submit GPU command buffer: %s", SDL_GetError());
             break;
@@ -327,8 +377,8 @@ int main(int argc, char **argv)
     graphics_pipeline_destroy(window.device, composite_pipeline);
     graphics_pipeline_destroy(window.device, two_dimension_pipeline);
     
-    vertex_buffer_destroy(window.device, &vertex_buffer);
-    index_buffer_destroy(window.device, &index_buffer);
+    batch_renderer_2d_destroy(&batch_renderer);
+    uniform_buffer_destroy(window.device, &view_projection_buffer);
     
     SDL_ReleaseGPUSampler(window.device, sampler);
     SDL_ReleaseGPUTexture(window.device, scene_texture);
