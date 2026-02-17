@@ -10,6 +10,8 @@ typedef struct Window
     SDL_Window *handle;
     SDL_GPUDevice *device;
     SDL_GPUTextureFormat swapchain_format;
+    int width;
+    int height;
 } Window;
 
 int create_window(Window *window, const char *title, int width, int height);

@@ -14,6 +14,10 @@ int create_window(Window *window, const char *title, int width, int height)
         SDL_Quit();
         return FAILURE;
     }
+    
+    window->width = width;
+    window->height = height;
+
     return SUCCESS;
 }
 

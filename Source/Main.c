@@ -4,6 +4,7 @@
 #include "Shader.h"
 #include "Buffers.h"
 #include "Renderer.h"
+#include "ParticleSystem.h"
 
 #include "Math.h"
 
@@ -37,9 +38,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    int SCREEN_WIDTH = 720;
-    int SCREEN_HEIGHT = 540;
-    
     Window window = {0};
     create_window(&window, "KROMA", 720, 540);
     create_gpu_device(&window);
@@ -48,8 +46,8 @@ int main(int argc, char **argv)
     SDL_GPUTextureCreateInfo scene_texture_info = {0};
     scene_texture_info.type = SDL_GPU_TEXTURETYPE_2D;
     scene_texture_info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    scene_texture_info.width = SCREEN_WIDTH;
-    scene_texture_info.height = SCREEN_HEIGHT;
+    scene_texture_info.width = window.width;
+    scene_texture_info.height = window.height;
     scene_texture_info.layer_count_or_depth = 1;
     scene_texture_info.num_levels = 1;
     scene_texture_info.sample_count = SDL_GPU_SAMPLECOUNT_1;
@@ -91,31 +89,56 @@ int main(int argc, char **argv)
     camera.position[2] = -8.0f;
 
     mat4 view_projection;
-    camera_update_matrices(&camera, (float)SCREEN_WIDTH, (float)SCREEN_HEIGHT, view_projection);
+    camera_update_matrices(&camera, (float)window.width, (float)window.height, view_projection);
     uniform_buffer_update(window.device, &view_projection_buffer, view_projection, sizeof(mat4));
+
+    // Create particle emitter
+    ParticleEmitter particle_emitter = {0};
+    if (!particle_emitter_create(&particle_emitter, window.device, (Vector2f){0.0f, 0.0f}, 5000))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create particle emitter");
+        batch_renderer_2d_destroy(&batch_renderer);
+        SDL_Quit();
+        return -1;
+    }
+    
+    // Set particle emitter properties
+    particle_emitter_set_gravity(&particle_emitter, 5.0f);
+    particle_emitter_set_damping(&particle_emitter, 0.2f);
+    
+    uint64_t last_time = SDL_GetPerformanceCounter();
+    uint64_t frequency = SDL_GetPerformanceFrequency();
 
     while (running)
     {
+        // Calculate delta time
+        uint64_t current_time = SDL_GetPerformanceCounter();
+        float delta_time = (float)(current_time - last_time) / (float)frequency;
+        last_time = current_time;
+        
+        // Update particle emitter
+        particle_emitter_update(&particle_emitter, delta_time);
+        
         while (SDL_PollEvent(&event))
         {
             switch (event.type)
             {
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 {
-                    SCREEN_WIDTH = event.window.data1;
-                    SCREEN_HEIGHT = event.window.data2;
+                    window.width = event.window.data1;
+                    window.height = event.window.data2;
                     
                     // Recreate scene texture with new dimensions
                     if (scene_texture)
                     {
                         SDL_ReleaseGPUTexture(window.device, scene_texture);
                     }
-                    scene_texture_info.width = SCREEN_WIDTH;
-                    scene_texture_info.height = SCREEN_HEIGHT;
+                    scene_texture_info.width = window.width;
+                    scene_texture_info.height = window.height;
                     scene_texture = SDL_CreateGPUTexture(window.device, &scene_texture_info);
                     
                     // Update camera immediately
-                    camera_update_matrices(&camera, SCREEN_WIDTH, SCREEN_HEIGHT, view_projection);
+                    camera_update_matrices(&camera, (float)window.width, (float)window.height, view_projection);
                     uniform_buffer_update(window.device, &view_projection_buffer, view_projection, sizeof(mat4));
                     break;
                 }
@@ -136,6 +159,20 @@ int main(int argc, char **argv)
                 {
                     if (event.button.button == SDL_BUTTON_LEFT)
                     {
+                        // Convert screen coords to world space at z=0 plane
+                        float aspect = (float)window.width / (float)window.height;
+                        float fov_rad = glm_rad(45.0f);
+                        float distance = 8.0f; // Camera z distance
+                        float view_height = 2.0f * tanf(fov_rad / 2.0f) * distance;
+                        float view_width = view_height * aspect;
+                        
+                        float ndc_x = (event.button.x / (float)window.width) * 2.0f - 1.0f;
+                        float ndc_y = (event.button.y / (float)window.height) * 2.0f - 1.0f;
+                        
+                        float world_x = -ndc_x * (view_width / 2.0f);
+                        float world_y = ndc_y * (view_height / 2.0f); // Flip Y
+                        
+                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_x, world_y});
                     }
                     break;
                 }
@@ -148,6 +185,24 @@ int main(int argc, char **argv)
                 }
                 case SDL_EVENT_MOUSE_MOTION:
                 {
+                    // Drag particle emitter with mouse
+                    if (event.motion.state & SDL_BUTTON_LMASK)
+                    {
+                        // Convert screen coords to world space at z=0 plane
+                        float aspect = (float)window.width / (float)window.height;
+                        float fov_rad = glm_rad(45.0f);
+                        float distance = 8.0f; // Camera z distance
+                        float view_height = 2.0f * tanf(fov_rad / 2.0f) * distance;
+                        float view_width = view_height * aspect;
+                        
+                        float ndc_x = (event.motion.x / (float)window.width) * 2.0f - 1.0f;
+                        float ndc_y = (event.motion.y / (float)window.height) * 2.0f - 1.0f;
+                        
+                        float world_x = -ndc_x * (view_width / 2.0f);
+                        float world_y = ndc_y * (view_height / 2.0f); // Flip Y
+                        
+                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_x, world_y});
+                    }
                     break;
                 }
             }
@@ -156,21 +211,15 @@ int main(int argc, char **argv)
         if (!composite_pipeline)
         {
             // Create 2D pipeline
-            Shader vertex_shader_2d = shader_create(window.device,
-                SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.spv",
-                "main");
-
-            Shader fragment_shader_2d = shader_create(window.device,
-                SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.spv",
-                "main");
+            Shader vertex_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.spv", "main");
+            Shader fragment_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.spv", "main");
 
             // Log the reflected vertex attributes
             SDL_Log("Vertex shader has %u attributes:", vertex_shader_2d.reflection_info.vertex_attribute_count);
             for (uint32_t i = 0; i < vertex_shader_2d.reflection_info.vertex_attribute_count; ++i)
             {
                 SDL_GPUVertexAttribute *attr = &vertex_shader_2d.reflection_info.vertex_attributes[i];
-                SDL_Log("  Attribute %u: location=%u, buffer_slot=%u, format=%d, offset=%u",
-                        i, attr->location, attr->buffer_slot, attr->format, attr->offset);
+                SDL_Log("  Attribute %u: location=%u, buffer_slot=%u, format=%d, offset=%u", i, attr->location, attr->buffer_slot, attr->format, attr->offset);
             }
 
             // Calculate vertex stride from reflected attributes
@@ -315,18 +364,8 @@ int main(int argc, char **argv)
                 // Build batch of quads
                 batch_renderer_2d_begin(&batch_renderer);
                 
-                // Example: Add a few test quads
-                batch_renderer_2d_add_quad(&batch_renderer, 
-                    (Vector2f){0.0f, 0.0f}, (Vector2f){1.0f, 1.0f}, 
-                    (Vector4f){1.0f, 1.0f, 0.0f, 1.0f});
-                
-                batch_renderer_2d_add_quad(&batch_renderer, 
-                    (Vector2f){2.0f, 0.0f}, (Vector2f){0.8f, 0.8f}, 
-                    (Vector4f){1.0f, 0.0f, 0.0f, 1.0f});
-                
-                batch_renderer_2d_add_quad(&batch_renderer, 
-                    (Vector2f){-2.0f, 0.0f}, (Vector2f){0.6f, 0.6f}, 
-                    (Vector4f){0.0f, 1.0f, 1.0f, 1.0f});
+                // Render particles
+                particle_emitter_render(&particle_emitter, &batch_renderer);
                 
                 batch_renderer_2d_end(&batch_renderer);
                 
@@ -377,6 +416,7 @@ int main(int argc, char **argv)
     graphics_pipeline_destroy(window.device, composite_pipeline);
     graphics_pipeline_destroy(window.device, two_dimension_pipeline);
     
+    particle_emitter_destroy(&particle_emitter);
     batch_renderer_2d_destroy(&batch_renderer);
     uniform_buffer_destroy(window.device, &view_projection_buffer);
     

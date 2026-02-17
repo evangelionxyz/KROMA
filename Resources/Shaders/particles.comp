@@ -1,0 +1,91 @@
+#version 450
+
+// Particle structure
+struct Particle
+{
+    vec2 position;
+    vec2 velocity;
+    vec4 color;
+    float lifetime;
+    float size;
+    float padding[2];
+};
+
+// Read-write storage buffer for particles (SET 1 for readwrite buffers)
+layout(set = 1, binding = 0) buffer ParticleBuffer
+{
+    Particle particles[];
+};
+
+// Read-only storage buffer for emitter properties (SET 0 for readonly buffers)
+layout(set = 0, binding = 0) readonly buffer EmitterDataBuffer
+{
+    vec2 emitter_position;
+    float delta_time;
+    uint particle_count;
+    float gravity;
+    float damping;
+    float padding[2];
+} emitter;
+
+layout(local_size_x = 64) in;
+
+// Simple random function using particle index and time
+float random(uint seed)
+{
+    uint state = seed * 747796405u + 2891336453u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return float((word >> 22u) ^ word) / 4294967295.0;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    
+    if (index >= emitter.particle_count)
+        return;
+    
+    Particle p = particles[index];
+    
+    // Update lifetime
+    p.lifetime -= emitter.delta_time;
+    
+    // If particle is dead, respawn it
+    if (p.lifetime <= 0.0)
+    {
+        // Reset particle at emitter position with random velocity
+        p.position = emitter.emitter_position;
+        
+        float angle = random(index) * 6.28318530718; // 2 * PI
+        float speed = 2.0 + random(index + 1000u) * 3.0;
+        
+        p.velocity.x = cos(angle) * speed;
+        p.velocity.y = sin(angle) * speed;
+        
+        p.lifetime = 2.0 + random(index + 2000u) * 2.0;
+        
+        // Random color
+        p.color.r = 0.5 + random(index + 3000u) * 0.5;
+        p.color.g = 0.5 + random(index + 4000u) * 0.5;
+        p.color.b = 0.5 + random(index + 5000u) * 0.5;
+        p.color.a = 1.0;
+        
+        p.size = 0.05 + random(index + 6000u) * 0.05;
+    }
+    else
+    {
+        // Apply physics
+        p.velocity.y += emitter.gravity * emitter.delta_time;
+        p.velocity *= (1.0 - emitter.damping * emitter.delta_time);
+        
+        // Update position
+        p.position += p.velocity * emitter.delta_time;
+        
+        // Fade out based on lifetime
+        float life_ratio = p.lifetime / 4.0; // Max lifetime is ~4 seconds
+        p.color.a = clamp(life_ratio, 0.0, 1.0);
+    }
+    
+    // Write back
+    particles[index] = p;
+}
