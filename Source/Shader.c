@@ -83,7 +83,21 @@ static bool shader_build_output_path(char* out_path, size_t out_path_size, const
     return snprintf(out_path, out_path_size, "%s/%s%s", out_dir, base_name, UMBRA_ShaderPlatformExtension(platform)) > 0;
 }
 
-int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point)
+static void print_reflection_summary(const char* label, const UmbraShaderReflectionInfo* reflection)
+{
+    printf("  [%s Reflection] type=%s, UBO=%zu, Samplers=%zu, StorageTex=%zu, StorageBuf=%zu, Inputs=%zu, Outputs=%zu, PushConstants=%zu\n",
+        label,
+        UMBRA_GetShaderTypeString(reflection->shaderType),
+        reflection->numUniformBuffers,
+        reflection->numSamplers,
+        reflection->numStorageTextures,
+        reflection->numStorageBuffers,
+        reflection->numStageInputs,
+        reflection->numStageOutputs,
+        reflection->numPushConstants);
+}
+
+int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point, bool force_recompile)
 {
     char binary_filepath[1024];
     UMBRA_ShaderPlatformType platform_type = UMBRA_SHADER_PLATFORM_TYPE_SPIRV;
@@ -100,7 +114,7 @@ int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath
     }
 
     // Try to load cached binary first
-    if (shader_load_from_binary(binary_filepath, out_data, out_size))
+    if (force_recompile == KR_FALSE && shader_load_from_binary(binary_filepath, out_data, out_size))
     {
         printf("Loaded cached shader: %s\n", binary_filepath);
         return KR_SUCCESS;
@@ -140,7 +154,7 @@ int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath
     return KR_SUCCESS;
 }
 
-int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point)
+int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point, bool force_recompile)
 {
     char binary_filepath[1024];
     UMBRA_ShaderPlatformType platform_type = UMBRA_SHADER_PLATFORM_TYPE_SPIRV;
@@ -157,7 +171,7 @@ int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **
     }
 
     // Try to load cached binary first
-    if (shader_load_from_binary(binary_filepath, out_data, out_size))
+    if (force_recompile == KR_FALSE && shader_load_from_binary(binary_filepath, out_data, out_size))
     {
         printf("Loaded cached shader: %s\n", binary_filepath);
         return KR_SUCCESS;
@@ -197,7 +211,8 @@ int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **
     return KR_SUCCESS;
 }
 
-int shader_load_from_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size) {
+int shader_load_from_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size)
+{
     FILE* file = fopen(filepath, "rb");
     long fileSize;
 
@@ -252,6 +267,55 @@ int shader_load_from_binary(const char *filepath, unsigned char **out_data, uint
     return 1;
 }
 
+uint32_t shader_calculate_vertex_stride(ShaderReflectionInfo *reflection_info)
+{
+    uint32_t vertex_stride = 0;
+    
+    // Process attributes ordered by location (0 to 15 max)
+    for (uint32_t loc = 0; loc < 16; ++loc)
+    {
+        for (uint32_t i = 0; i < reflection_info->vertex_attribute_count; ++i)
+        {
+            SDL_GPUVertexAttribute *attr = &reflection_info->vertex_attributes[i];
+            if (attr->location == loc)
+            {
+                attr->offset = vertex_stride;
+                uint32_t attr_size = 0;
+                
+                // Calculate size based on format
+                switch (attr->format)
+                {
+                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_INT:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT:
+                        attr_size = 4;
+                        break;
+                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_INT2:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT2:
+                        attr_size = 8;
+                        break;
+                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_INT3:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT3:
+                        attr_size = 12;
+                        break;
+                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_INT4:
+                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT4:
+                        attr_size = 16;
+                        break;
+                    default:
+                        break;
+                }
+                vertex_stride += attr_size;
+            }
+        }
+    }
+
+    return vertex_stride;
+}
+
 UMBRA_ShaderType shader_get_umbra_shader_type(SDL_GPUShaderStage state)
 {
     if (state == SDL_GPU_SHADERSTAGE_VERTEX)
@@ -263,14 +327,14 @@ UMBRA_ShaderType shader_get_umbra_shader_type(SDL_GPUShaderStage state)
     return UMBRA_SHADER_TYPE_VERTEX;
 }
 
-Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filepath, const char *entry_point)
+Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filepath, const char *entry_point, bool force_recompile)
 {
     Shader shader = {0};
     
     unsigned char *shader_data = NULL;
     uint64_t shader_data_size = 0;
 
-    if (shader_load_or_compile_binary(stage, filepath, &shader_data, &shader_data_size, entry_point) == KR_FAILURE)
+    if (shader_load_or_compile_binary(stage, filepath, &shader_data, &shader_data_size, entry_point, force_recompile) == KR_FAILURE)
     {
         assert(false && "failed to compile shader");
         return shader;
@@ -294,22 +358,15 @@ Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char
             shader.reflection_info.vertex_attributes[i].offset = reflection_info.vertexAttributes[i].offset;
             shader.reflection_info.vertex_attributes[i].format = (SDL_GPUVertexElementFormat)reflection_info.vertexAttributes[i].format;
             shader.reflection_info.vertex_attributes[i].buffer_slot = reflection_info.vertexAttributes[i].bufferIndex;
-            shader.reflection_info.vertex_attributes[i].location = i;
-            
-            for (uint32_t j = 0; j < reflection_info.numStageInputs; ++j)
-            {
-                if (strcmp(reflection_info.stageInputs[j].name, reflection_info.vertexAttributes[i].name) == 0)
-                {
-                    shader.reflection_info.vertex_attributes[i].location = reflection_info.stageInputs[j].location;
-                    break;
-                }
-            }
+            shader.reflection_info.vertex_attributes[i].location = reflection_info.vertexAttributes[i].location;
         }
     }
     else
     {
         shader.reflection_info.vertex_attributes = NULL;
     }
+
+    print_reflection_summary("SPIRV", &reflection_info);
 
     UmbraCompiler_FreeReflectionInfo(&reflection_info);
 
@@ -360,20 +417,6 @@ void shader_release(SDL_GPUDevice *device, Shader *shader)
     }
 }
 
-static void print_reflection_summary(const char* label, const UmbraShaderReflectionInfo* reflection)
-{
-    printf("  [%s Reflection] type=%s, UBO=%zu, Samplers=%zu, StorageTex=%zu, StorageBuf=%zu, Inputs=%zu, Outputs=%zu, PushConstants=%zu\n",
-        label,
-        UMBRA_GetShaderTypeString(reflection->shaderType),
-        reflection->numUniformBuffers,
-        reflection->numSamplers,
-        reflection->numStorageTextures,
-        reflection->numStorageBuffers,
-        reflection->numStageInputs,
-        reflection->numStageOutputs,
-        reflection->numPushConstants);
-}
-
 ShaderReflectionInfo shader_reflect_spirv(SDL_GPUShaderStage stage, const uint32_t *data, uint64_t data_size)
 {
     ShaderReflectionInfo info = {0};
@@ -405,16 +448,7 @@ ShaderReflectionInfo shader_reflect_spirv(SDL_GPUShaderStage stage, const uint32
             info.vertex_attributes[i].offset = reflection_info.vertexAttributes[i].offset;
             info.vertex_attributes[i].format = (SDL_GPUVertexElementFormat)reflection_info.vertexAttributes[i].format;
             info.vertex_attributes[i].buffer_slot = reflection_info.vertexAttributes[i].bufferIndex;
-            info.vertex_attributes[i].location = i;
-            
-            for (uint32_t j = 0; j < reflection_info.numStageInputs; ++j)
-            {
-                if (strcmp(reflection_info.stageInputs[j].name, reflection_info.vertexAttributes[i].name) == 0)
-                {
-                    info.vertex_attributes[i].location = reflection_info.stageInputs[j].location;
-                    break;
-                }
-            }
+            info.vertex_attributes[i].location = reflection_info.vertexAttributes[i].location;
         }
     }
     else

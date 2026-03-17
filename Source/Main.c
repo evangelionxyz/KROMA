@@ -210,8 +210,8 @@ int main(int argc, char **argv)
         if (!composite_pipeline)
         {
             // Create 2D pipeline
-            Shader vertex_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.glsl", "main");
-            Shader fragment_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.glsl", "main");
+            Shader vertex_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.glsl", "main", KR_TRUE);
+            Shader fragment_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.glsl", "main", KR_TRUE);
 
             // Log the reflected vertex attributes
             SDL_Log("Vertex shader has %u attributes:", vertex_shader_2d.reflection_info.vertex_attribute_count);
@@ -222,40 +222,7 @@ int main(int argc, char **argv)
             }
 
             // Calculate vertex stride from reflected attributes
-            uint32_t vertex_stride = 0;
-            for (uint32_t i = 0; i < vertex_shader_2d.reflection_info.vertex_attribute_count; ++i)
-            {
-                SDL_GPUVertexAttribute *attr = &vertex_shader_2d.reflection_info.vertex_attributes[i];
-                uint32_t attr_size = 0;
-                
-                // Calculate size based on format
-                switch (attr->format)
-                {
-                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_INT:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT:
-                        attr_size = 4;
-                        break;
-                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_INT2:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT2:
-                        attr_size = 8;
-                        break;
-                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_INT3:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT3:
-                        attr_size = 12;
-                        break;
-                    case SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_INT4:
-                    case SDL_GPU_VERTEXELEMENTFORMAT_UINT4:
-                        attr_size = 16;
-                        break;
-                    default:
-                        break;
-                }
-                vertex_stride += attr_size;
-            }
+            const uint32_t vertex_stride = shader_calculate_vertex_stride(&vertex_shader_2d.reflection_info);
 
             SDL_GPUVertexBufferDescription vertex_buffer_desc = {0};
             vertex_buffer_desc.slot = 0;
@@ -290,8 +257,8 @@ int main(int argc, char **argv)
             shader_release(window.device, &fragment_shader_2d);
 
             // Create composite pipeline
-            Shader vertex_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/composite.vert.glsl", "main");
-            Shader fragment_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/composite.frag.glsl", "main");
+            Shader vertex_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/composite.vert.glsl", "main", KR_TRUE);
+            Shader fragment_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/composite.frag.glsl", "main", KR_TRUE);
 
             if (vertex_shader.handle && fragment_shader.handle)
             {
@@ -336,9 +303,9 @@ int main(int argc, char **argv)
         {
             SDL_GPUColorTargetInfo scene_target_info = {0};
             scene_target_info.texture = scene_texture;
-            scene_target_info.clear_color.r = 0.1f;
-            scene_target_info.clear_color.g = 0.1f;
-            scene_target_info.clear_color.b = 0.1f;
+            scene_target_info.clear_color.r = 0.025f;
+            scene_target_info.clear_color.g = 0.025f;
+            scene_target_info.clear_color.b = 0.025f;
             scene_target_info.clear_color.a = 1.0f;
             scene_target_info.load_op = SDL_GPU_LOADOP_CLEAR;
             scene_target_info.store_op = SDL_GPU_STOREOP_STORE;

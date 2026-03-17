@@ -83,7 +83,7 @@ bool particle_emitter_create(ParticleEmitter *emitter, SDL_GPUDevice *device, Ve
     // Create compute shader
     unsigned char *shader_data = NULL;
     uint64_t shader_byte_size = 0;
-    KR_RESULT success = shader_load_or_compile_compute_binary("Resources/Shaders/particles.comp.glsl", &shader_data, &shader_byte_size, "main");
+    KR_RESULT success = shader_load_or_compile_compute_binary("Resources/Shaders/particles.comp.glsl", &shader_data, &shader_byte_size, "main", KR_TRUE);
     
     if (!shader_data || success == KR_FAILURE)
     {
@@ -172,7 +172,7 @@ bool particle_emitter_create(ParticleEmitter *emitter, SDL_GPUDevice *device, Ve
     }
     
     // Create cull compute shader
-    success = shader_load_or_compile_compute_binary("Resources/Shaders/particle_cull.comp.glsl", &shader_data, &shader_byte_size, "main");
+    success = shader_load_or_compile_compute_binary("Resources/Shaders/particle_cull.comp.glsl", &shader_data, &shader_byte_size, "main", KR_TRUE);
     
     if (!shader_data || success == KR_FAILURE)
     {
@@ -303,12 +303,12 @@ void particle_emitter_update(ParticleEmitter *emitter, float delta_time)
     }
     
     // Setup readwrite storage buffer binding for particle buffer
-    SDL_GPUStorageBufferReadWriteBinding readwrite_binding = {0};
-    readwrite_binding.buffer = emitter->particle_buffer;
-    readwrite_binding.cycle = true;
+    SDL_GPUStorageBufferReadWriteBinding readwrite_binding[1] = {0};
+    readwrite_binding[0].buffer = emitter->particle_buffer;
+    readwrite_binding[0].cycle = false;
     
     // Begin compute pass with readwrite buffer binding
-    SDL_GPUComputePass *compute_pass = SDL_BeginGPUComputePass(cmd, NULL, 0, &readwrite_binding, 1);
+    SDL_GPUComputePass *compute_pass = SDL_BeginGPUComputePass(cmd, NULL, 0, readwrite_binding, ARRAY_SIZE(readwrite_binding));
     if (!compute_pass)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to begin compute pass");
@@ -320,7 +320,7 @@ void particle_emitter_update(ParticleEmitter *emitter, float delta_time)
     
     // Bind readonly storage buffer (emitter buffer)
     SDL_GPUBuffer *readonly_buffers[1] = { emitter->emitter_buffer };
-    SDL_BindGPUComputeStorageBuffers(compute_pass, 0, readonly_buffers, 1);
+    SDL_BindGPUComputeStorageBuffers(compute_pass, 0, readonly_buffers, ARRAY_SIZE(readonly_buffers));
     
     // Dispatch compute shader (64 threads per workgroup, as defined in shader)
     uint32_t workgroup_count = (emitter->particle_count + 63) / 64;
@@ -365,7 +365,7 @@ void particle_emitter_render(ParticleEmitter *emitter, BatchRenderer2D *batch_re
     readwrite_bindings[1].buffer = emitter->counter_buffer;
     readwrite_bindings[1].cycle = false;
     
-    SDL_GPUComputePass *cull_pass = SDL_BeginGPUComputePass(cull_cmd, NULL, 0, readwrite_bindings, 2);
+    SDL_GPUComputePass *cull_pass = SDL_BeginGPUComputePass(cull_cmd, NULL, 0, readwrite_bindings, ARRAY_SIZE(readwrite_bindings));
     if (!cull_pass)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to begin cull compute pass");
@@ -376,7 +376,7 @@ void particle_emitter_render(ParticleEmitter *emitter, BatchRenderer2D *batch_re
     
     // Bind readonly storage buffer (particle buffer)
     SDL_GPUBuffer *readonly_buffers[1] = { emitter->particle_buffer };
-    SDL_BindGPUComputeStorageBuffers(cull_pass, 0, readonly_buffers, 1);
+    SDL_BindGPUComputeStorageBuffers(cull_pass, 0, readonly_buffers, ARRAY_SIZE(readonly_buffers));
     
     // Push constant for particle count
     SDL_PushGPUComputeUniformData(cull_cmd, 0, &emitter->particle_count, sizeof(uint32_t));

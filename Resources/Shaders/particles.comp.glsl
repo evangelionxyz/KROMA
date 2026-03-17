@@ -45,7 +45,6 @@ void main()
     
     p.lifetime -= emitter.delta_time;
     
-#if 0
     if (p.lifetime <= 0.0)
     {
         p.position = emitter.emitter_position;
@@ -66,7 +65,6 @@ void main()
         p.size = 0.05 + random(index + 6000u) * 0.05;
     }
     else
-#endif
     {
         // Apply physics
         p.velocity.y -= emitter.gravity * emitter.delta_time;
@@ -76,8 +74,12 @@ void main()
         p.position += p.velocity * emitter.delta_time;
         
         // Fade out based on lifetime
+        p.color.r = 0.5 + random(index + 3000u) * 0.5;
+        p.color.g = 0.5 + random(index + 4000u) * 0.5;
+        p.color.b = 0.5 + random(index + 5000u) * 0.5;
+        
         float life_ratio = p.lifetime / 4.0; // Max lifetime is ~4 seconds
-        p.color.a = clamp(life_ratio, 0.0, 1.0);
+        p.color.a = 1.0; //clamp(life_ratio, 0.0, 1.0);
     }
     
     // Write back
