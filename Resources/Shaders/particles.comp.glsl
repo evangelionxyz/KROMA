@@ -72,14 +72,8 @@ void main()
         
         // Update position
         p.position += p.velocity * emitter.delta_time;
-        
-        // Fade out based on lifetime
-        p.color.r = 0.5 + random(index + 3000u) * 0.5;
-        p.color.g = 0.5 + random(index + 4000u) * 0.5;
-        p.color.b = 0.5 + random(index + 5000u) * 0.5;
-        
         float life_ratio = p.lifetime / 4.0; // Max lifetime is ~4 seconds
-        p.color.a = 1.0; //clamp(life_ratio, 0.0, 1.0);
+        p.color.a = clamp(life_ratio, 0.0, 1.0);
     }
     
     // Write back
