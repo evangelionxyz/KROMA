@@ -36,8 +36,11 @@ typedef struct ParticleEmitter
 {
     SDL_GPUDevice *device;
     SDL_GPUComputePipeline *compute_pipeline;
+    SDL_GPUComputePipeline *cull_pipeline;
     SDL_GPUBuffer *particle_buffer;
     SDL_GPUBuffer *emitter_buffer;
+    SDL_GPUBuffer *alive_particle_buffer;
+    SDL_GPUBuffer *counter_buffer;
     
     Particle *particles;
     EmitterData emitter_data;

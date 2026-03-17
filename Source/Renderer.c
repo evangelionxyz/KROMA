@@ -90,8 +90,7 @@ bool batch_renderer_2d_init(BatchRenderer2D *renderer, SDL_GPUDevice *device)
     renderer->quad_count = 0;
     renderer->in_batch = false;
     
-    SDL_Log("Batch renderer initialized: %u max quads (%u vertices, %u indices)", 
-            MAX_QUADS, MAX_VERTICES, MAX_INDICES);
+    SDL_Log("Batch renderer initialized: %u max quads (%u vertices, %u indices)", MAX_QUADS, MAX_VERTICES, MAX_INDICES);
     
     return true;
 }
@@ -139,9 +138,7 @@ void batch_renderer_2d_begin(BatchRenderer2D *renderer)
     renderer->in_batch = true;
 }
 
-void batch_renderer_2d_add_quad(BatchRenderer2D *renderer, 
-                                 Vector2f position, Vector2f size, 
-                                 Vector4f color)
+void batch_renderer_2d_add_quad(BatchRenderer2D *renderer, Vector2f position, Vector2f size, Vector4f color)
 {
     if (!renderer || !renderer->in_batch)
     {

@@ -5,23 +5,16 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
 
 typedef struct ShaderReflectionInfo {
-    size_t num_uniform_buffers;
-    size_t num_samplers;
-    size_t num_storage_textures;
-    size_t num_storage_buffers;
+    uint64_t num_uniform_buffers;
+    uint64_t num_samplers;
+    uint64_t num_storage_textures;
+    uint64_t num_storage_buffers;
 
     SDL_GPUVertexAttribute *vertex_attributes;
     uint32_t vertex_attribute_count;
 } ShaderReflectionInfo;
-
-typedef struct ShaderBinary
-{
-    uint8_t *bytes;
-    size_t size;
-} ShaderBinary;
 
 typedef struct Shader
 {
@@ -29,9 +22,12 @@ typedef struct Shader
     ShaderReflectionInfo reflection_info;
 } Shader;
 
-ShaderBinary shader_load_from_binary(const char *filename);
-Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filename, const char *entry_point);
+Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filepath, const char *entry_point);
 void shader_release(SDL_GPUDevice *device, Shader *shader);
-ShaderReflectionInfo shader_reflect_spirv(const uint32_t *spirv_data, size_t size_in_bytes);
+ShaderReflectionInfo shader_reflect_spirv(SDL_GPUShaderStage stage, const uint32_t *data, uint64_t data_size);
+
+int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point);
+int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point);
+int shader_load_from_binary(const char* filepath, unsigned char** outData, uint64_t* out_size);
 
 #endif

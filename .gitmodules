@@ -1,3 +1,6 @@
 [submodule "CGLM"]
 	path = CGLM
 	url = https://github.com/recp/cglm.git
+[submodule "Umbra-ShaderCompiler"]
+	path = Umbra-ShaderCompiler
+	url = https://github.com/evangelionxyz/Umbra-ShaderCompiler.git

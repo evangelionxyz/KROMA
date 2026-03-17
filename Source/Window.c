@@ -12,13 +12,13 @@ int create_window(Window *window, const char *title, int width, int height)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window: %s", SDL_GetError());
         SDL_Quit();
-        return FAILURE;
+        return KR_FAILURE;
     }
     
     window->width = width;
     window->height = height;
 
-    return SUCCESS;
+    return KR_SUCCESS;
 }
 
 int create_gpu_device(Window *window)
@@ -29,7 +29,7 @@ int create_gpu_device(Window *window)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create GPU device: %s", SDL_GetError());
         SDL_DestroyWindow(window->handle);
         SDL_Quit();
-        return FAILURE;
+        return KR_FAILURE;
     }
 
     if (!SDL_ClaimWindowForGPUDevice(window->device, window->handle))
@@ -38,13 +38,13 @@ int create_gpu_device(Window *window)
         SDL_DestroyGPUDevice(window->device);
         SDL_DestroyWindow(window->handle);
         SDL_Quit();
-        return FAILURE;
+        return KR_FAILURE;
     }
 
     SDL_SetGPUSwapchainParameters(window->device, window->handle, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
     window->swapchain_format = SDL_GetGPUSwapchainTextureFormat(window->device, window->handle);
 
-    return SUCCESS;
+    return KR_SUCCESS;
 }
 
 void destroy_gpu_device(Window *window)

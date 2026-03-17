@@ -81,7 +81,6 @@ int main(int argc, char **argv)
     SDL_Event event;
     bool running = true;
 
-    // Create uniform buffer for view-projection matrix
     UniformBuffer view_projection_buffer = uniform_buffer_create(window.device, sizeof(mat4));
 
     Camera camera;
@@ -94,7 +93,7 @@ int main(int argc, char **argv)
 
     // Create particle emitter
     ParticleEmitter particle_emitter = {0};
-    if (!particle_emitter_create(&particle_emitter, window.device, (Vector2f){0.0f, 0.0f}, 5000))
+    if (!particle_emitter_create(&particle_emitter, window.device, (Vector2f){0.0f, 0.0f}, 100))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create particle emitter");
         batch_renderer_2d_destroy(&batch_renderer);
@@ -103,8 +102,8 @@ int main(int argc, char **argv)
     }
     
     // Set particle emitter properties
-    particle_emitter_set_gravity(&particle_emitter, 5.0f);
-    particle_emitter_set_damping(&particle_emitter, 0.2f);
+    particle_emitter_set_gravity(&particle_emitter, -9.8f);
+    particle_emitter_set_damping(&particle_emitter, 0.1f);
     
     uint64_t last_time = SDL_GetPerformanceCounter();
     uint64_t frequency = SDL_GetPerformanceFrequency();
@@ -211,8 +210,8 @@ int main(int argc, char **argv)
         if (!composite_pipeline)
         {
             // Create 2D pipeline
-            Shader vertex_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.spv", "main");
-            Shader fragment_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.spv", "main");
+            Shader vertex_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/2d.vert.glsl", "main");
+            Shader fragment_shader_2d = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/2d.frag.glsl", "main");
 
             // Log the reflected vertex attributes
             SDL_Log("Vertex shader has %u attributes:", vertex_shader_2d.reflection_info.vertex_attribute_count);
@@ -280,7 +279,7 @@ int main(int argc, char **argv)
             desc_2d.num_vertex_buffers = 1;
             desc_2d.vertex_attributes = vertex_shader_2d.reflection_info.vertex_attributes;
             desc_2d.num_vertex_attributes = vertex_shader_2d.reflection_info.vertex_attribute_count;
-            desc_2d.num_samplers = 0;
+            desc_2d.num_samplers = vertex_shader_2d.reflection_info.num_samplers;
 
             two_dimension_pipeline = graphics_pipeline_create(window.device, &desc_2d);
             if (!two_dimension_pipeline)
@@ -291,13 +290,8 @@ int main(int argc, char **argv)
             shader_release(window.device, &fragment_shader_2d);
 
             // Create composite pipeline
-            Shader vertex_shader = shader_create(window.device,
-                SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/composite.vert.spv",
-                "main");
-
-            Shader fragment_shader = shader_create(window.device,
-                SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/composite.frag.spv",
-                "main");
+            Shader vertex_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_VERTEX, "Resources/Shaders/composite.vert.glsl", "main");
+            Shader fragment_shader = shader_create(window.device, SDL_GPU_SHADERSTAGE_FRAGMENT, "Resources/Shaders/composite.frag.glsl", "main");
 
             if (vertex_shader.handle && fragment_shader.handle)
             {

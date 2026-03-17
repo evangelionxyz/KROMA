@@ -1,69 +1,321 @@
+#include "Base.h"
+
 #include "Shader.h"
-#include <spirv_cross/spirv_cross_c.h>
 #include <SDL3/SDL_log.h>
-
+#include <SDL3/SDL_filesystem.h>
 #include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdlib.h>
 
-ShaderBinary shader_load_from_binary(const char *filename)
+#include <Umbra/ShaderCompilerCAPI.h>
+
+static const char *SHADER_CACHE_DIRECTORY = "Resources/Shaders/GLSL/Cache";
+
+static int is_path_separator(char ch)
 {
-    ShaderBinary result = {0};
-    FILE *file = fopen(filename, "rb");
-    if (!file)
+    return ch == '/' || ch == '\\';
+}
+
+static int ensure_directory(const char* path)
+{
+    if (SDL_CreateDirectory(path))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to open shader binary: %s", filename);
-        return result;
+        return 1;
+    }
+    return 0;
+}
+
+static int ensure_directory_recursive(const char* path)
+{
+    char temp[1024] = {0};
+    size_t len = strlen(path);
+    if (len >= sizeof(temp))
+    {
+        return 0;
+    }
+
+    snprintf(temp, sizeof(temp), "%s", path);
+
+    for (size_t i = 1; i < len; ++i)
+    {
+        if (is_path_separator(temp[i]))
+        {
+            char saved = temp[i];
+            temp[i] = '\0';
+            if (strlen(temp) > 0)
+            {
+                ensure_directory(temp);
+            }
+            temp[i] = saved;
+        }
+    }
+
+    return ensure_directory(temp);
+}
+
+static const char* shader_get_filename_from_path(const char* path)
+{
+    const char* slash = strrchr(path, '/');
+    const char* backslash = strrchr(path, '\\');
+    const char* fileName = slash;
+    if (backslash != NULL && (fileName == NULL || backslash > fileName))
+    {
+        fileName = backslash;
+    }
+    return (fileName == NULL) ? path : (fileName + 1);
+}
+
+static bool shader_build_output_path(char* out_path, size_t out_path_size, const char* out_dir, const char* input_path, UMBRA_ShaderPlatformType platform)
+{
+    const char* file_name = shader_get_filename_from_path(input_path);
+    char base_name[256] = {0};
+    snprintf(base_name, sizeof(base_name), "%s", file_name);
+
+    char* dot = strrchr(base_name, '.');
+    if (dot != NULL)
+    {
+        *dot = '\0';
+    }
+
+    return snprintf(out_path, out_path_size, "%s/%s%s", out_dir, base_name, UMBRA_ShaderPlatformExtension(platform)) > 0;
+}
+
+int shader_load_or_compile_binary(SDL_GPUShaderStage stage, const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point)
+{
+    char binary_filepath[1024];
+    UMBRA_ShaderPlatformType platform_type = UMBRA_SHADER_PLATFORM_TYPE_SPIRV;
+    UMBRA_ShaderType shader_type = shader_get_umbra_shader_type(stage);
+
+    if (!ensure_directory_recursive(SHADER_CACHE_DIRECTORY))
+    {
+        printf("Failed to create cache directory: %s\n", SHADER_CACHE_DIRECTORY);
+    }
+
+    if (!shader_build_output_path(binary_filepath, sizeof(binary_filepath), SHADER_CACHE_DIRECTORY, filepath, platform_type))
+    {
+        return KR_FAILURE;
+    }
+
+    // Try to load cached binary first
+    if (shader_load_from_binary(binary_filepath, out_data, out_size))
+    {
+        printf("Loaded cached shader: %s\n", binary_filepath);
+        return KR_SUCCESS;
+    }
+
+    // Compile if not found
+    UmbraCompileRequest request = {0};
+    UMBRA_ResultCode compile_result;
+
+    request.inputPath = filepath;
+    request.outputDirectory = SHADER_CACHE_DIRECTORY;
+    request.entryPoint = entry_point;
+    request.shaderModel = "6_5";
+    request.vulkanVersion = "1.3";
+    request.platformType = platform_type;
+    request.shaderType = shader_type;
+    request.optimizationLevel = UMBRA_OPT_LEVEL_3;
+    request.tRegShift = 0;
+    request.sRegShift = 0;
+    request.rRegShift = 0;
+    request.uRegShift = 0;
+
+    compile_result = UmbraCompiler_Compile(&request);
+    printf("Compile (%s) %s -> %d\n", UMBRA_ShaderPlatformToString(platform_type), filepath, (int)compile_result);
+    if (compile_result != UMBRA_RESULT_OK)
+    {
+        assert(false && "Failed to compile shader");
+        return KR_FAILURE;
+    }
+
+    if (!shader_load_from_binary(binary_filepath, out_data, out_size))
+    {
+        printf("  Failed to load compiled output: %s\n", binary_filepath);
+        return KR_FAILURE;
+    }
+
+    return KR_SUCCESS;
+}
+
+int shader_load_or_compile_compute_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size, const char *entry_point)
+{
+    char binary_filepath[1024];
+    UMBRA_ShaderPlatformType platform_type = UMBRA_SHADER_PLATFORM_TYPE_SPIRV;
+    const UMBRA_ShaderType shader_type = UMBRA_SHADER_TYPE_COMPUTE;
+
+    if (!ensure_directory_recursive(SHADER_CACHE_DIRECTORY))
+    {
+        printf("Failed to create cache directory: %s\n", SHADER_CACHE_DIRECTORY);
+    }
+
+    if (!shader_build_output_path(binary_filepath, sizeof(binary_filepath), SHADER_CACHE_DIRECTORY, filepath, platform_type))
+    {
+        return KR_FAILURE;
+    }
+
+    // Try to load cached binary first
+    if (shader_load_from_binary(binary_filepath, out_data, out_size))
+    {
+        printf("Loaded cached shader: %s\n", binary_filepath);
+        return KR_SUCCESS;
+    }
+
+    // Compile if not found
+    UmbraCompileRequest request = {0};
+    UMBRA_ResultCode compile_result;
+
+    request.inputPath = filepath;
+    request.outputDirectory = SHADER_CACHE_DIRECTORY;
+    request.entryPoint = entry_point;
+    request.shaderModel = "6_5";
+    request.vulkanVersion = "1.3";
+    request.platformType = platform_type;
+    request.shaderType = shader_type;
+    request.optimizationLevel = UMBRA_OPT_LEVEL_3;
+    request.tRegShift = 0;
+    request.sRegShift = 0;
+    request.rRegShift = 0;
+    request.uRegShift = 0;
+
+    compile_result = UmbraCompiler_Compile(&request);
+    printf("Compile (%s) %s -> %d\n", UMBRA_ShaderPlatformToString(platform_type), filepath, (int)compile_result);
+    if (compile_result != UMBRA_RESULT_OK)
+    {
+        assert(false && "Failed to compile shader");
+        return KR_FAILURE;
+    }
+
+    if (!shader_load_from_binary(binary_filepath, out_data, out_size))
+    {
+        printf("  Failed to load compiled output: %s\n", binary_filepath);
+        return KR_FAILURE;
+    }
+
+    return KR_SUCCESS;
+}
+
+int shader_load_from_binary(const char *filepath, unsigned char **out_data, uint64_t *out_size) {
+    FILE* file = fopen(filepath, "rb");
+    long fileSize;
+
+    uint64_t readSize;
+    unsigned char* data;
+
+    *out_data = NULL;
+    *out_size = 0;
+
+    if (file == NULL)
+    {
+        return 0;
     }
 
     if (fseek(file, 0, SEEK_END) != 0)
     {
         fclose(file);
-        return result;
+        return 0;
     }
 
-    // get file size
-    long length = ftell(file);
-    if (length <= 0)
+    fileSize = ftell(file);
+    if (fileSize <= 0)
     {
         fclose(file);
-        return result;
+        return 0;
     }
 
-    // go the begin of memory
-    rewind(file);
-
-    uint8_t *buffer = (uint8_t *)malloc((size_t)length);
-    if (!buffer)
+    if (fseek(file, 0, SEEK_SET) != 0)
     {
         fclose(file);
-        return result;
+        return 0;
     }
 
-    size_t read_size = fread(buffer, 1, (size_t)length, file);
-    if (read_size != (size_t)length)
+    data = (unsigned char*)malloc((uint64_t)fileSize);
+    if (data == NULL)
     {
-        free(buffer);
-        return result;
+        fclose(file);
+        return 0;
     }
 
-    result.bytes = buffer;
-    result.size = (size_t)length;
-    return result;
+    readSize = fread(data, 1, (uint64_t)fileSize, file);
+    fclose(file);
+
+    if (readSize != (uint64_t)fileSize)
+    {
+        free(data);
+        return 0;
+    }
+
+    *out_data = data;
+    *out_size = readSize;
+    return 1;
 }
 
-Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filename, const char *entry_point)
+UMBRA_ShaderType shader_get_umbra_shader_type(SDL_GPUShaderStage state)
+{
+    if (state == SDL_GPU_SHADERSTAGE_VERTEX)
+        return UMBRA_SHADER_TYPE_VERTEX;
+    else if (state == SDL_GPU_SHADERSTAGE_FRAGMENT)
+        return UMBRA_SHADER_TYPE_PIXEL;
+
+    assert(false && "Invalid shader stage");
+    return UMBRA_SHADER_TYPE_VERTEX;
+}
+
+Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char *filepath, const char *entry_point)
 {
     Shader shader = {0};
+    
+    unsigned char *shader_data = NULL;
+    uint64_t shader_data_size = 0;
 
-    ShaderBinary binary_code = shader_load_from_binary(filename);
-    if (!binary_code.bytes)
+    if (shader_load_or_compile_binary(stage, filepath, &shader_data, &shader_data_size, entry_point) == KR_FAILURE)
     {
+        assert(false && "failed to compile shader");
         return shader;
     }
-    shader.reflection_info = shader_reflect_spirv((uint32_t *)binary_code.bytes, binary_code.size);
-    
+
+    UmbraShaderReflectionInfo reflection_info = {0};
+    UMBRA_ResultCode result_code = UmbraCompiler_ReflectSPIRV((const uint32_t *)shader_data, shader_data_size,
+        shader_get_umbra_shader_type(stage), &reflection_info);
+
+    shader.reflection_info.num_samplers = (uint32_t)reflection_info.numSamplers;
+    shader.reflection_info.num_storage_buffers = (uint32_t)reflection_info.numStorageBuffers;
+    shader.reflection_info.num_storage_textures = (uint32_t)reflection_info.numStorageTextures;
+    shader.reflection_info.num_uniform_buffers = (uint32_t)reflection_info.numUniformBuffers;
+    shader.reflection_info.vertex_attribute_count = (uint32_t)reflection_info.vertexAttributeCount;
+
+    if (shader.reflection_info.vertex_attribute_count > 0)
+    {
+        shader.reflection_info.vertex_attributes = malloc(sizeof(SDL_GPUVertexAttribute) * shader.reflection_info.vertex_attribute_count);
+        for (uint32_t i = 0; i < shader.reflection_info.vertex_attribute_count; ++i)
+        {
+            shader.reflection_info.vertex_attributes[i].offset = reflection_info.vertexAttributes[i].offset;
+            shader.reflection_info.vertex_attributes[i].format = (SDL_GPUVertexElementFormat)reflection_info.vertexAttributes[i].format;
+            shader.reflection_info.vertex_attributes[i].buffer_slot = reflection_info.vertexAttributes[i].bufferIndex;
+            shader.reflection_info.vertex_attributes[i].location = i;
+            
+            for (uint32_t j = 0; j < reflection_info.numStageInputs; ++j)
+            {
+                if (strcmp(reflection_info.stageInputs[j].name, reflection_info.vertexAttributes[i].name) == 0)
+                {
+                    shader.reflection_info.vertex_attributes[i].location = reflection_info.stageInputs[j].location;
+                    break;
+                }
+            }
+        }
+    }
+    else
+    {
+        shader.reflection_info.vertex_attributes = NULL;
+    }
+
+    UmbraCompiler_FreeReflectionInfo(&reflection_info);
+
     SDL_GPUShaderCreateInfo shader_create_info = {0};
-    shader_create_info.code_size = binary_code.size;
-    shader_create_info.code = binary_code.bytes;
+    shader_create_info.code = shader_data;
+    shader_create_info.code_size = shader_data_size;
     shader_create_info.entrypoint = entry_point;
     shader_create_info.format = SDL_GPU_SHADERFORMAT_SPIRV;
     shader_create_info.stage = stage;
@@ -75,11 +327,11 @@ Shader shader_create(SDL_GPUDevice *device, SDL_GPUShaderStage stage, const char
     SDL_GPUShader *sdl_shader = SDL_CreateGPUShader(device, &shader_create_info);
     
     // free binary after create shader
-    free(binary_code.bytes);
+    free(shader_data);
 
     if (!sdl_shader)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create GPU shaders: %s", filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create GPU shaders: %s", filepath);
     }
     else
     {
@@ -108,235 +360,69 @@ void shader_release(SDL_GPUDevice *device, Shader *shader)
     }
 }
 
-ShaderReflectionInfo shader_reflect_spirv(const uint32_t *spirv_data, size_t size_in_bytes)
+static void print_reflection_summary(const char* label, const UmbraShaderReflectionInfo* reflection)
+{
+    printf("  [%s Reflection] type=%s, UBO=%zu, Samplers=%zu, StorageTex=%zu, StorageBuf=%zu, Inputs=%zu, Outputs=%zu, PushConstants=%zu\n",
+        label,
+        UMBRA_GetShaderTypeString(reflection->shaderType),
+        reflection->numUniformBuffers,
+        reflection->numSamplers,
+        reflection->numStorageTextures,
+        reflection->numStorageBuffers,
+        reflection->numStageInputs,
+        reflection->numStageOutputs,
+        reflection->numPushConstants);
+}
+
+ShaderReflectionInfo shader_reflect_spirv(SDL_GPUShaderStage stage, const uint32_t *data, uint64_t data_size)
 {
     ShaderReflectionInfo info = {0};
-    spvc_context context = NULL;
-    spvc_parsed_ir ir = NULL;
-    spvc_compiler compiler = NULL;
-    spvc_resources resources = NULL;
     
-    // Create context
-    if (spvc_context_create(&context) != SPVC_SUCCESS)
+    UmbraShaderReflectionInfo reflection_info;
+    memset(&reflection_info, 0, sizeof(UmbraShaderReflectionInfo));
+
+    if ((data_size % 4) != 0)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create SPIRV-Cross context");
-        return info;
+        printf("  Reflection failed (SPIRV size must be 4-byte aligned).\n");
     }
-    
-    // Parse SPIRV
-    size_t word_count = size_in_bytes / sizeof(uint32_t);
-    if (spvc_context_parse_spirv(context, spirv_data, word_count, &ir) != SPVC_SUCCESS)
+    else
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to parse SPIRV");
-        spvc_context_destroy(context);
-        return info;
-    }
-    
-    // Create compiler
-    if (spvc_context_create_compiler(context, SPVC_BACKEND_GLSL, ir, SPVC_CAPTURE_MODE_TAKE_OWNERSHIP, &compiler) != SPVC_SUCCESS)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create compiler");
-        spvc_context_destroy(context);
-        return info;
-    }
-    
-    // Get shader resources
-    if (spvc_compiler_create_shader_resources(compiler, &resources) != SPVC_SUCCESS)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create shader resources");
-        spvc_context_destroy(context);
-        return info;
+        UMBRA_ShaderType shader_type = shader_get_umbra_shader_type(stage);
+        UMBRA_ResultCode result = UmbraCompiler_ReflectSPIRV(data, data_size, shader_type, &reflection_info);
+        if (result == UMBRA_RESULT_OK)
+        {
+            print_reflection_summary("SPIRV", &reflection_info);
+        }
     }
 
-    // Get shader stages
-    const spvc_reflected_resource *input_stage_list = NULL;
-    size_t input_stage_count = 0;
-    spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_STAGE_INPUT, &input_stage_list, &input_stage_count);
-    
-    // Uniform buffers
-    const spvc_reflected_resource *ubo_list = NULL;
-    size_t ubo_count = 0;
-    spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, &ubo_list, &ubo_count);
-    info.num_uniform_buffers = ubo_count;
-    
-    // Combined image samplers (sampler2D, sampler3D, etc.)
-    const spvc_reflected_resource *sampler_list = NULL;
-    size_t sampler_count = 0;
-    spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, &sampler_list, &sampler_count);
-    info.num_samplers = sampler_count;
-    
-    // Storage textures
-    const spvc_reflected_resource *storage_tex_list = NULL;
-    size_t storage_tex_count = 0;
-    spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_STORAGE_IMAGE, &storage_tex_list, &storage_tex_count);
-    info.num_storage_textures = storage_tex_count;
-    
-    // Storage buffers
-    const spvc_reflected_resource *storage_buf_list = NULL;
-    size_t storage_buf_count = 0;
-    spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_STORAGE_BUFFER, &storage_buf_list, &storage_buf_count);
-    info.num_storage_buffers = storage_buf_count;
-
-
-    // Vertex inputs (only for vertex shaders)
-    info.vertex_attributes = NULL;
-    info.vertex_attribute_count = 0;
-
-    if (input_stage_count > 0)
+    // Populate info
+    info.vertex_attribute_count = (uint32_t)reflection_info.vertexAttributeCount;
+    if (info.vertex_attribute_count > 0)
     {
-        // Helper struct for sorting by location
-        typedef struct VertexInput
+        info.vertex_attributes = malloc(sizeof(SDL_GPUVertexAttribute) * info.vertex_attribute_count);
+        for (uint32_t i = 0; i < info.vertex_attribute_count; ++i)
         {
-            uint32_t location;
-            spvc_reflected_resource resource;
-        } VertexInput;
-
-        // Allocate array for sorting
-        VertexInput *inputs = (VertexInput *)malloc(sizeof(VertexInput) * input_stage_count);
-        if (!inputs)
-        {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to allocate memory for vertex inputs");
-            spvc_context_destroy(context);
-            return info;
-        }
-
-        // Gather all inputs with their locations
-        for (size_t i = 0; i < input_stage_count; ++i)
-        {
-            inputs[i].resource = input_stage_list[i];
-            inputs[i].location = spvc_compiler_get_decoration(compiler, input_stage_list[i].id, SpvDecorationLocation);
-        }
-
-        // Simple bubble sort by location (fine for small arrays)
-        for (size_t i = 0; i < input_stage_count - 1; ++i)
-        {
-            for (size_t j = 0; j < input_stage_count - i - 1; ++j)
-            {
-                if (inputs[j].location > inputs[j + 1].location)
-                {
-                    VertexInput temp = inputs[j];
-                    inputs[j] = inputs[j + 1];
-                    inputs[j + 1] = temp;
-                }
-            }
-        }
-
-        // Allocate vertex attributes array
-        info.vertex_attributes = (SDL_GPUVertexAttribute *)malloc(sizeof(SDL_GPUVertexAttribute) * input_stage_count);
-        if (!info.vertex_attributes)
-        {
-            free(inputs);
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to allocate memory for vertex attributes");
-            spvc_context_destroy(context);
-            return info;
-        }
-
-        uint32_t offset = 0;
-        uint32_t attr_count = 0;
-
-        // Process each input in location order
-        for (size_t i = 0; i < input_stage_count; ++i)
-        {
-            spvc_reflected_resource res = inputs[i].resource;
-            spvc_type type_id = spvc_compiler_get_type_handle(compiler, res.type_id);
+            info.vertex_attributes[i].offset = reflection_info.vertexAttributes[i].offset;
+            info.vertex_attributes[i].format = (SDL_GPUVertexElementFormat)reflection_info.vertexAttributes[i].format;
+            info.vertex_attributes[i].buffer_slot = reflection_info.vertexAttributes[i].bufferIndex;
+            info.vertex_attributes[i].location = i;
             
-            spvc_basetype base_type = spvc_type_get_basetype(type_id);
-            uint32_t vec_size = spvc_type_get_vector_size(type_id);
-            uint32_t columns = spvc_type_get_columns(type_id);
-
-            // Map SPIRV type to SDL GPU format
-            SDL_GPUVertexElementFormat format = SDL_GPU_VERTEXELEMENTFORMAT_INVALID;
-            uint32_t attribute_size = 0;
-
-            if (base_type == SPVC_BASETYPE_FP32 && columns == 1)
+            for (uint32_t j = 0; j < reflection_info.numStageInputs; ++j)
             {
-                switch (vec_size)
+                if (strcmp(reflection_info.stageInputs[j].name, reflection_info.vertexAttributes[i].name) == 0)
                 {
-                    case 1:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT;
-                        attribute_size = 4;
-                        break;
-                    case 2:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-                        attribute_size = 8;
-                        break;
-                    case 3:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-                        attribute_size = 12;
-                        break;
-                    case 4:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4;
-                        attribute_size = 16;
-                        break;
+                    info.vertex_attributes[i].location = reflection_info.stageInputs[j].location;
+                    break;
                 }
-            }
-            else if (base_type == SPVC_BASETYPE_INT32 && columns == 1)
-            {
-                switch (vec_size)
-                {
-                    case 1:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_INT;
-                        attribute_size = 4;
-                        break;
-                    case 2:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_INT2;
-                        attribute_size = 8;
-                        break;
-                    case 3:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_INT3;
-                        attribute_size = 12;
-                        break;
-                    case 4:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_INT4;
-                        attribute_size = 16;
-                        break;
-                }
-            }
-            else if (base_type == SPVC_BASETYPE_UINT32 && columns == 1)
-            {
-                switch (vec_size)
-                {
-                    case 1:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
-                        attribute_size = 4;
-                        break;
-                    case 2:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2;
-                        attribute_size = 8;
-                        break;
-                    case 3:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_UINT3;
-                        attribute_size = 12;
-                        break;
-                    case 4:
-                        format = SDL_GPU_VERTEXELEMENTFORMAT_UINT4;
-                        attribute_size = 16;
-                        break;
-                }
-            }
-
-            if (format != SDL_GPU_VERTEXELEMENTFORMAT_INVALID)
-            {
-                SDL_GPUVertexAttribute *attr = &info.vertex_attributes[attr_count];
-                attr->location = inputs[i].location;
-                attr->buffer_slot = 0; // Single vertex buffer
-                attr->format = format;
-                attr->offset = offset;
-
-                offset += attribute_size;
-                attr_count++;
-            }
-            else
-            {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, 
-                           "Unsupported vertex attribute format at location %u", inputs[i].location);
             }
         }
-
-        info.vertex_attribute_count = attr_count;
-        free(inputs);
     }
-    
-    spvc_context_destroy(context);
+    else
+    {
+        info.vertex_attributes = NULL;
+    }
+
+    UmbraCompiler_FreeReflectionInfo(&reflection_info);
+
     return info;
 }

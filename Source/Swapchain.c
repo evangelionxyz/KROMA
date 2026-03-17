@@ -8,7 +8,7 @@ int swapchain_acquire(SDL_GPUCommandBuffer *cmd, Window *window, Swapchain *swap
         &swapchain->width, &swapchain->height))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to acquire swapchain texture: %s", SDL_GetError());
-        return FAILURE;
+        return KR_FAILURE;
     }
-    return SUCCESS;
+    return KR_SUCCESS;
 }

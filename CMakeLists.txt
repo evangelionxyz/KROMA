@@ -3,23 +3,30 @@ project(KROMA)
 
 find_program(GLSLC_EXECUTABLE glslc REQUIRED)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CGML_STATIC ON)
 add_subdirectory("CGLM")
 
-include(CompileShaders.cmake)
+set(UMBRACOMPILER_BUILD_EXAMPLES OFF)
+add_subdirectory(Umbra-ShaderCompiler)
 
 file(GLOB_RECURSE SRC_FILES "Source/*.c")
 add_executable(KROMA ${SRC_FILES})
-add_dependencies(KROMA compile_shaders)
+
+# include(CompileShaders.cmake)
+# add_dependencies(KROMA compile_shaders)
 
 target_include_directories(KROMA PRIVATE
     "SDL3/include"
     "CGLM/include"
+    "Umbra-ShaderCompiler/Include"
     "$ENV{VULKAN_SDK}/Include"
 )
 
 target_link_libraries(KROMA PRIVATE
     cglm
+    UmbraCompiler
     ${CMAKE_CURRENT_SOURCE_DIR}/SDL3/lib/windows/x64/SDL3.lib
     ${CMAKE_CURRENT_SOURCE_DIR}/SDL3/lib/windows/x64/SDL3_ttf.lib
     $<$<CONFIG:Debug>:$ENV{VULKAN_SDK}/Lib/spirv-cross-cd.lib>

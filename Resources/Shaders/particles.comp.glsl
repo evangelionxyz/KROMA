@@ -1,6 +1,5 @@
 #version 450
 
-// Particle structure
 struct Particle
 {
     vec2 position;
@@ -11,13 +10,6 @@ struct Particle
     float padding[2];
 };
 
-// Read-write storage buffer for particles (SET 1 for readwrite buffers)
-layout(set = 1, binding = 0) buffer ParticleBuffer
-{
-    Particle particles[];
-};
-
-// Read-only storage buffer for emitter properties (SET 0 for readonly buffers)
 layout(set = 0, binding = 0) readonly buffer EmitterDataBuffer
 {
     vec2 emitter_position;
@@ -28,9 +20,13 @@ layout(set = 0, binding = 0) readonly buffer EmitterDataBuffer
     float padding[2];
 } emitter;
 
+layout(set = 1, binding = 0) buffer ParticleBuffer
+{
+    Particle particles[];
+};
+
 layout(local_size_x = 64) in;
 
-// Simple random function using particle index and time
 float random(uint seed)
 {
     uint state = seed * 747796405u + 2891336453u;
@@ -47,13 +43,11 @@ void main()
     
     Particle p = particles[index];
     
-    // Update lifetime
     p.lifetime -= emitter.delta_time;
     
-    // If particle is dead, respawn it
+#if 0
     if (p.lifetime <= 0.0)
     {
-        // Reset particle at emitter position with random velocity
         p.position = emitter.emitter_position;
         
         float angle = random(index) * 6.28318530718; // 2 * PI
@@ -64,7 +58,6 @@ void main()
         
         p.lifetime = 2.0 + random(index + 2000u) * 2.0;
         
-        // Random color
         p.color.r = 0.5 + random(index + 3000u) * 0.5;
         p.color.g = 0.5 + random(index + 4000u) * 0.5;
         p.color.b = 0.5 + random(index + 5000u) * 0.5;
@@ -73,9 +66,10 @@ void main()
         p.size = 0.05 + random(index + 6000u) * 0.05;
     }
     else
+#endif
     {
         // Apply physics
-        p.velocity.y += emitter.gravity * emitter.delta_time;
+        p.velocity.y -= emitter.gravity * emitter.delta_time;
         p.velocity *= (1.0 - emitter.damping * emitter.delta_time);
         
         // Update position
