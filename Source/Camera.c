@@ -21,7 +21,7 @@ static void camera_update_vectors(Camera *camera)
     glm_normalize(camera->up);
 }
 
-void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pitch_degrees, int viewport_width, int viewport_height)
+void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pitch_degrees, int viewport_width, int viewport_height, float fov_radians)
 {
     if (!camera)
     {
@@ -39,7 +39,7 @@ void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pit
     camera->yaw = glm_rad(yaw_degrees);
     camera->pitch = glm_rad(pitch_degrees);
 
-    camera->field_of_view = glm_rad(45.0f);
+    camera->field_of_view = fov_radians;
     camera->near_plane = 0.1f;
     camera->far_plane = 500.0f;
 

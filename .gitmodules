@@ -4,3 +4,6 @@
 [submodule "Umbra-ShaderCompiler"]
 	path = Umbra-ShaderCompiler
 	url = https://github.com/evangelionxyz/Umbra-ShaderCompiler.git
+[submodule "SDL"]
+	path = SDL
+	url = https://github.com/libsdl-org/SDL.git

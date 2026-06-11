@@ -38,12 +38,12 @@ SDL_GPUGraphicsPipeline *graphics_pipeline_create(SDL_GPUDevice *device, Graphic
     depth_stencil.enable_stencil_test = false;
 
     SDL_GPUGraphicsPipelineCreateInfo pipeline_info = {0};
-    pipeline_info.vertex_shader = desc->vertex_shader;
-    pipeline_info.fragment_shader = desc->fragment_shader;
+    pipeline_info.vertex_shader = desc->vertex_shader->handle;
+    pipeline_info.fragment_shader = desc->fragment_shader->handle;
     pipeline_info.vertex_input_state.vertex_buffer_descriptions = desc->vertex_buffer_descriptions;
     pipeline_info.vertex_input_state.num_vertex_buffers = desc->num_vertex_buffers;
-    pipeline_info.vertex_input_state.vertex_attributes = desc->vertex_attributes;
-    pipeline_info.vertex_input_state.num_vertex_attributes = desc->num_vertex_attributes;
+    pipeline_info.vertex_input_state.vertex_attributes = desc->vertex_shader->reflection_info.vertex_attributes;
+    pipeline_info.vertex_input_state.num_vertex_attributes = desc->vertex_shader->reflection_info.vertex_attribute_count;
     pipeline_info.primitive_type = desc->primitive_type;
     pipeline_info.rasterizer_state = rasterizer;
     pipeline_info.multisample_state = multisample;

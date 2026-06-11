@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     }
 
     Window window = {0};
-    create_window(&window, "KROMA", 720, 540);
+    create_window(&window, "KROMA", 1280, 640);
     create_gpu_device(&window);
 
     // Create scene render target
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
     UniformBuffer view_projection_buffer = uniform_buffer_create(window.device, sizeof(mat4));
 
     Camera camera = {0};
-    camera_init(&camera, (Vector3f){0.0f, 4.0f, -12.0f}, 90.0f, -15.0f, window.width, window.height);
+    camera_init(&camera, (Vector3f){0.0f, 4.0f, -12.0f}, 90.0f, -15.0f, window.width, window.height, glm_rad(45.0f));
 
     mat4 view_projection;
     camera_update_matrices(&camera, view_projection);
@@ -162,20 +162,8 @@ int main(int argc, char **argv)
 
                     if (event.button.button == SDL_BUTTON_LEFT)
                     {
-                        // Convert screen coords to world space at z=0 plane
-                        float aspect = (float)window.width / (float)window.height;
-                        float fov_rad = glm_rad(45.0f);
-                        float distance = 8.0f; // Camera z distance
-                        float view_height = 2.0f * tanf(fov_rad / 2.0f) * distance;
-                        float view_width = view_height * aspect;
-                        
-                        float ndc_x = (event.button.x / (float)window.width) * 2.0f - 1.0f;
-                        float ndc_y = (event.button.y / (float)window.height) * 2.0f - 1.0f;
-                        
-                        float world_x = -ndc_x * (view_width / 2.0f);
-                        float world_y = ndc_y * (view_height / 2.0f); // Flip Y
-                        
-                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_x, world_y});
+                        const Vector3f world_coord = get_world_coordinate(&camera, event.button.x, event.button.y);
+                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_coord.x, world_coord.y});
                     }
                     break;
                 }
@@ -202,20 +190,8 @@ int main(int argc, char **argv)
                     // Drag particle emitter with mouse
                     if (event.motion.state & SDL_BUTTON_LMASK)
                     {
-                        // Convert screen coords to world space at z=0 plane
-                        float aspect = (float)window.width / (float)window.height;
-                        float fov_rad = glm_rad(45.0f);
-                        float distance = 8.0f; // Camera z distance
-                        float view_height = 2.0f * tanf(fov_rad / 2.0f) * distance;
-                        float view_width = view_height * aspect;
-                        
-                        float ndc_x = (event.motion.x / (float)window.width) * 2.0f - 1.0f;
-                        float ndc_y = (event.motion.y / (float)window.height) * 2.0f - 1.0f;
-                        
-                        float world_x = -ndc_x * (view_width / 2.0f);
-                        float world_y = ndc_y * (view_height / 2.0f); // Flip Y
-                        
-                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_x, world_y});
+                        const Vector3f world_coord = get_world_coordinate(&camera, event.motion.x, event.motion.y);
+                        particle_emitter_set_position(&particle_emitter, (Vector2f){world_coord.x, world_coord.y});
                     }
                     break;
                 }
@@ -248,16 +224,13 @@ int main(int argc, char **argv)
             desc_3d.fill_mode = SDL_GPU_FILLMODE_LINE;
             desc_3d.cull_mode = SDL_GPU_CULLMODE_NONE;
             desc_3d.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
-            desc_3d.vertex_shader = vertex_shader_3d.handle;
-            desc_3d.fragment_shader = fragment_shader_3d.handle;
+            desc_3d.vertex_shader = &vertex_shader_3d;
+            desc_3d.fragment_shader = &fragment_shader_3d;
             desc_3d.enable_depth_test = true;
             desc_3d.enable_depth_write = true;
             desc_3d.enable_blend = true;
             desc_3d.vertex_buffer_descriptions = &vertex_buffer_desc_3d;
             desc_3d.num_vertex_buffers = 1;
-            desc_3d.vertex_attributes = vertex_shader_3d.reflection_info.vertex_attributes;
-            desc_3d.num_vertex_attributes = vertex_shader_3d.reflection_info.vertex_attribute_count;
-            desc_3d.num_samplers = vertex_shader_3d.reflection_info.num_samplers;
 
             three_dimension_pipeline = graphics_pipeline_create(window.device, &desc_3d);
             if (!three_dimension_pipeline)
@@ -296,16 +269,13 @@ int main(int argc, char **argv)
             desc_2d.fill_mode = SDL_GPU_FILLMODE_FILL;
             desc_2d.cull_mode = SDL_GPU_CULLMODE_NONE;
             desc_2d.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
-            desc_2d.vertex_shader = vertex_shader_2d.handle;
-            desc_2d.fragment_shader = fragment_shader_2d.handle;
+            desc_2d.vertex_shader = &vertex_shader_2d;
+            desc_2d.fragment_shader = &fragment_shader_2d;
             desc_2d.enable_depth_test = false;
             desc_2d.enable_depth_write = false;
             desc_2d.enable_blend = false;
             desc_2d.vertex_buffer_descriptions = &vertex_buffer_desc;
             desc_2d.num_vertex_buffers = 1;
-            desc_2d.vertex_attributes = vertex_shader_2d.reflection_info.vertex_attributes;
-            desc_2d.num_vertex_attributes = vertex_shader_2d.reflection_info.vertex_attribute_count;
-            desc_2d.num_samplers = vertex_shader_2d.reflection_info.num_samplers;
 
             two_dimension_pipeline = graphics_pipeline_create(window.device, &desc_2d);
             if (!two_dimension_pipeline)
@@ -328,16 +298,13 @@ int main(int argc, char **argv)
                 desc.fill_mode = SDL_GPU_FILLMODE_FILL;
                 desc.cull_mode = SDL_GPU_CULLMODE_NONE;
                 desc.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
-                desc.vertex_shader = vertex_shader.handle;
-                desc.fragment_shader = fragment_shader.handle;
+                desc.vertex_shader = &vertex_shader;
+                desc.fragment_shader = &fragment_shader;
                 desc.enable_depth_test = false;
                 desc.enable_depth_write = false;
                 desc.enable_blend = false;
                 desc.vertex_buffer_descriptions = NULL;
                 desc.num_vertex_buffers = 0;
-                desc.vertex_attributes = NULL;
-                desc.num_vertex_attributes = 0;
-                desc.num_samplers = 1;
 
                 composite_pipeline = graphics_pipeline_create(window.device, &desc);
                 if (!composite_pipeline)
