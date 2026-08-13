@@ -1,6 +1,8 @@
 #ifndef _MATH_H
 #define _MATH_H
 
+typedef struct Camera Camera;
+
 // FLOAT
 typedef struct Vector2f
 {
@@ -35,6 +37,6 @@ typedef struct Vector4i
 } Vector4i;
 
 Vector2f get_normalized_device_coordinate(float point_x, float point_y, float size_x, float size_y);
-Vector3f get_world_coordinate(struct Camera *camera, float point_x, float point_y);
+Vector3f get_world_coordinate(Camera *camera, float point_x, float point_y);
 
 #endif

@@ -18,6 +18,7 @@ typedef struct GraphicsPipelineDescription
     bool enable_depth_test;
     bool enable_depth_write;
     bool enable_blend;
+    SDL_GPUTextureFormat depth_stencil_format;
     
     // Vertex input (optional)
     SDL_GPUVertexBufferDescription *vertex_buffer_descriptions;

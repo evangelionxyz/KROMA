@@ -17,7 +17,8 @@ SDL_GPUGraphicsPipeline *graphics_pipeline_create(SDL_GPUDevice *device, Graphic
     SDL_GPUGraphicsPipelineTargetInfo target_info = {0};
     target_info.color_target_descriptions = &color_target_description;
     target_info.num_color_targets = 1;
-    target_info.has_depth_stencil_target = false;
+    target_info.has_depth_stencil_target = desc->enable_depth_test || (desc->depth_stencil_format != SDL_GPU_TEXTUREFORMAT_INVALID);
+    target_info.depth_stencil_format = desc->depth_stencil_format;
 
     SDL_GPURasterizerState rasterizer = {0};
     rasterizer.fill_mode = desc->fill_mode;

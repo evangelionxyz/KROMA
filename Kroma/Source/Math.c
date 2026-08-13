@@ -1,5 +1,4 @@
 #include "Math.h"
-
 #include "Camera.h"
 #include <math.h>
 
@@ -11,7 +10,7 @@ Vector2f get_normalized_device_coordinate(float point_x, float point_y, float si
     return (Vector2f){ .x = ndc_x, .y = ndc_y };
 }
 
-Vector3f get_world_coordinate(struct Camera *camera, float point_x, float point_y)
+Vector3f get_world_coordinate(Camera *camera, float point_x, float point_y)
 {
     const Vector2f ndc = get_normalized_device_coordinate(point_x, point_y,
         (float)camera->viewport_size.x, (float)camera->viewport_size.y);

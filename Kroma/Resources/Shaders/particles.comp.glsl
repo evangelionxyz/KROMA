@@ -67,7 +67,7 @@ void main()
     else
     {
         // Apply physics
-        p.velocity.y -= emitter.gravity * emitter.delta_time;
+        p.velocity.y += emitter.gravity * emitter.delta_time;
         p.velocity *= (1.0 - emitter.damping * emitter.delta_time);
         
         // Update position

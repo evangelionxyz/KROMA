@@ -1,6 +1,7 @@
 #include "Camera.h"
 
 #include <SDL3/SDL_scancode.h>
+#include <assert.h>
 
 #include "cglm/clipspace/persp_rh_zo.h"
 #include "cglm/clipspace/view_rh_zo.h"
@@ -23,10 +24,10 @@ static void camera_update_vectors(Camera *camera)
 
 void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pitch_degrees, int viewport_width, int viewport_height, float fov_radians)
 {
+    assert(viewport_width > 0 && viewport_height > 0 && "Please insert a valid viewport size");
+    
     if (!camera)
-    {
         return;
-    }
 
     camera->position[0] = position.x;
     camera->position[1] = position.y;
@@ -52,21 +53,17 @@ void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pit
 
 void camera_set_viewport(Camera *camera, int width, int height)
 {
-    if (!camera)
-    {
+    if (!camera || width < 1 || height < 1)
         return;
-    }
 
     camera->viewport_size.x = width;
-    camera->viewport_size.y = height > 0 ? height : 1;
+    camera->viewport_size.y = height;
 }
 
 void camera_process_keyboard(Camera *camera, const bool *keyboard_state, float delta_time)
 {
     if (!camera || !keyboard_state || delta_time <= 0.0f)
-    {
         return;
-    }
 
     const float velocity = camera->movement_speed * delta_time;
 
@@ -99,12 +96,10 @@ void camera_process_keyboard(Camera *camera, const bool *keyboard_state, float d
 void camera_process_mouse(Camera *camera, float delta_x, float delta_y)
 {
     if (!camera)
-    {
         return;
-    }
 
     camera->yaw += delta_x * camera->look_sensitivity;
-    camera->pitch += delta_y * camera->look_sensitivity;
+    camera->pitch -= delta_y * camera->look_sensitivity;
 
     const float pitch_limit = glm_rad(89.0f);
     if (camera->pitch > pitch_limit)
@@ -122,12 +117,11 @@ void camera_process_mouse(Camera *camera, float delta_x, float delta_y)
 void camera_update_matrices(Camera *camera, mat4 view_projection)
 {
     if (!camera)
-    {
         return;
-    }
 
     const float aspect = (float)camera->viewport_size.x / (float)camera->viewport_size.y;
     glm_perspective_rh_zo(camera->field_of_view, aspect, camera->near_plane, camera->far_plane, camera->projection);
+    camera->projection[1][1] *= -1.0f; // Invert Y for Vulkan NDC clip space
 
     vec3 target;
     glm_vec3_add(camera->position, camera->front, target);
