@@ -1,9 +1,9 @@
-[submodule "CGLM"]
-	path = CGLM
+[submodule "Thirdparty/CGLM"]
+	path = Thirdparty/CGLM
 	url = https://github.com/recp/cglm.git
-[submodule "Umbra-ShaderCompiler"]
-	path = Umbra-ShaderCompiler
+[submodule "Thirdparty/ShaderCompiler"]
+	path = Thirdparty/ShaderCompiler
 	url = https://github.com/evangelionxyz/Umbra-ShaderCompiler.git
-[submodule "SDL"]
-	path = SDL
+[submodule "Thirdparty/SDL3"]
+	path = Thirdparty/SDL3
 	url = https://github.com/libsdl-org/SDL.git
