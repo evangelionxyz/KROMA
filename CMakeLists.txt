@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(KROMA)
-find_program(GLSLC_EXECUTABLE glslc REQUIRED)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CGML_STATIC ON)

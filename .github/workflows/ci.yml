@@ -139,7 +139,7 @@ jobs:
 
       - name: Configure CMake
         shell: bash
-        run: cmake -S . -B build -G Ninja --config Release
+        run: cmake -S . -B build -G Ninja
 
       - name: Build
         shell: bash
