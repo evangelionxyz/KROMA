@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     runs-on: windows-2025-vs2026
@@ -14,8 +18,16 @@ jobs:
         configuration: [Release]
     
     steps:
-      - name: Checkout repository
+      - name: Skip Duplicate Actions
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'never'
+          skip_after_successful_duplicate: 'true'
+
+      - name: Checkout repository recursively (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup CMake
         uses: lukka/get-cmake@latest
@@ -89,8 +101,16 @@ jobs:
         configuration: [Release]
     
     steps:
-      - name: Checkout repository
+      - name: Skip Duplicate Actions
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'never'
+          skip_after_successful_duplicate: 'true'
+
+      - name: Checkout repository recursively (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup CMake
         uses: lukka/get-cmake@latest
