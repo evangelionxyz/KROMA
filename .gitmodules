@@ -7,3 +7,6 @@
 [submodule "Thirdparty/SDL3"]
 	path = Thirdparty/SDL3
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "Thirdparty/CGLTF"]
+	path = Thirdparty/CGLTF
+	url = https://github.com/jkuhlmann/cgltf.git

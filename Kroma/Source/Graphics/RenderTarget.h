@@ -1,7 +1,16 @@
+// Copyright (c) 2026 Evangelion Manuhutu
+
 #ifndef _RENDER_TARGET_H
 #define _RENDER_TARGET_H
 
+#include "Core/Base.h"
+
 #include <SDL3/SDL_gpu.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 typedef struct RenderTargetDescription
 {
@@ -20,7 +29,13 @@ typedef struct RenderTarget
     size_t color_texture_count;
 } RenderTarget;
 
-RenderTarget *render_target_create(SDL_GPUDevice *device, RenderTargetDescription *desc);
-void render_target_destroy(RenderTarget *render_target);
+KR_API RenderTarget *render_target_create(SDL_GPUDevice *device, RenderTargetDescription *desc);
+KR_API void render_target_destroy(RenderTarget *render_target);
+
+
+#ifdef __cplusplus
+}
+#endif
+
 
 #endif

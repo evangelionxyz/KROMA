@@ -1,4 +1,7 @@
+// Copyright (c) 2026 Evangelion Manuhutu
+
 #include "RenderTarget.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>

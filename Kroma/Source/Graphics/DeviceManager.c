@@ -1,5 +1,9 @@
+// Copyright (c) 2026 Evangelion Manuhutu
+
 #include "DeviceManager.h"
-#include "../Window.h"
+#include "Window.h"
+
+#include "Core/Base.h"
 #include <SDL3/SDL_log.h>
 
 static DeviceManager s_global_device_manager = {0};
@@ -65,15 +69,14 @@ int device_manager_claim_window(DeviceManager *manager, struct Window *window)
 
     if (!SDL_ClaimWindowForGPUDevice(manager->device, window->handle))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to claim window (%u) for GPU device: %s",
-                     window->id, SDL_GetError());
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+            "Failed to claim window (%u) for GPU device: %s",
+            window->id, SDL_GetError());
+        
         return KR_FAILURE;
     }
 
-    SDL_SetGPUSwapchainParameters(manager->device, window->handle,
-                                  SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-                                  SDL_GPU_PRESENTMODE_VSYNC);
-
+    SDL_SetGPUSwapchainParameters(manager->device, window->handle, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
     window->swapchain_format = SDL_GetGPUSwapchainTextureFormat(manager->device, window->handle);
     return KR_SUCCESS;
 }
