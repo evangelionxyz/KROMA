@@ -21,4 +21,3 @@ add_subdirectory(Thirdparty/ShaderCompiler)
 # Programs/Libraries
 add_subdirectory(Kroma)
 add_subdirectory(Tests)
-add_subdirectory(AutoLoadr)

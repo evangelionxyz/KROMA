@@ -30,6 +30,7 @@ foreach (NAME ${KROMA_LIST})
         "${CMAKE_SOURCE_DIR}/Thirdparty/CGLM/include"
         "${CMAKE_SOURCE_DIR}/Thirdparty/ShaderCompiler/Include"
         "${CMAKE_SOURCE_DIR}/Thirdparty/CGLTF"
+        "${CMAKE_SOURCE_DIR}/Thirdparty/STB"
         "$ENV{VULKAN_SDK}/Include"
     )
     if(WIN32)

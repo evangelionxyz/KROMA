@@ -44,9 +44,9 @@ void camera_init(Camera *camera, Vector3f position, float yaw_degrees, float pit
 
     camera->field_of_view = fov_radians;
     camera->near_plane = 0.1f;
-    camera->far_plane = 500.0f;
+    camera->far_plane = 1000.0f;
 
-    camera->movement_speed = 10.0f;
+    camera->movement_speed = 5.0f;
     camera->look_sensitivity = 0.0025f;
 
     camera_set_viewport(camera, viewport_width, viewport_height);

@@ -1,0 +1,147 @@
+name: CI-Pipeline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-windows:
+    runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        configuration: [Release]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Cache Vulkan SDK (Windows)
+        uses: actions/cache@v4
+        with:
+          path: C:/VulkanSDK
+          key: ${{ runner.os }}-vulkan-sdk-1.4.350.0
+
+      - name: Install Vulkan SDK using WinGet
+        shell: pwsh
+        run: |
+          $sdkRoot = "C:/VulkanSDK"
+          if (Test-Path $sdkRoot) {
+            $installed = Get-ChildItem $sdkRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+            if ($installed) {
+              Write-Host "Vulkan SDK found in cache at $($installed.FullName)"
+              "VULKAN_SDK=$($installed.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              exit 0
+            }
+          }
+
+          $wingetStdOut = Join-Path $env:RUNNER_TEMP "winget-vulkan-install.out.log"
+          $wingetStdErr = Join-Path $env:RUNNER_TEMP "winget-vulkan-install.err.log"
+          $wingetArgs = @(
+            "install",
+            "--id", "KhronosGroup.VulkanSDK",
+            "--exact",
+            "--source", "winget",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--disable-interactivity"
+          )
+
+          $wingetProc = Start-Process -FilePath "winget" -ArgumentList $wingetArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $wingetStdOut -RedirectStandardError $wingetStdErr
+          if ($wingetProc.ExitCode -ne 0) {
+            Write-Error "Vulkan SDK installation failed with exit code $($wingetProc.ExitCode)."
+            if (Test-Path $wingetStdErr) {
+              Get-Content $wingetStdErr -Tail 100
+            }
+            exit $wingetProc.ExitCode
+          }
+
+          $sdkRoot = "C:/VulkanSDK"
+          if (-not (Test-Path $sdkRoot)) {
+            Write-Error "Vulkan SDK installation completed but '$sdkRoot' was not found."
+            exit 1
+          }
+
+          $installed = Get-ChildItem $sdkRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $installed) {
+            Write-Error "Could not resolve installed Vulkan SDK directory under '$sdkRoot'."
+            exit 1
+          }
+
+          "VULKAN_SDK=$($installed.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Configure CMake
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 18 2026"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config ${{ matrix.configuration }} --parallel
+
+  build-ubuntu:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        configuration: [Release]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Cache Vulkan SDK (Linux)
+        uses: actions/cache@v4
+        with:
+          path: /opt/vulkan
+          key: ${{ runner.os }}-vulkan-sdk-1.4.350.0
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang lld cmake ninja-build pkg-config \
+            git tar wget xz-utils \
+            vulkan-tools mesa-vulkan-drivers \
+            libwayland-dev libxkbcommon-dev xorg-dev \
+            libasound2-dev libudev-dev zlib1g-dev \
+            libfmt-dev libxml2-dev \
+            libopenexr-dev libimath-dev \
+            libglib2.0-dev
+
+      - name: Install Vulkan SDK (Linux)
+        shell: bash
+        run: |
+          set -eux
+          VULKAN_VERSION="1.4.350.0"
+          VULKAN_DIR="/opt/vulkan"
+          export VULKAN_SDK="${VULKAN_DIR}/${VULKAN_VERSION}/x86_64"
+          
+          if [ -d "${VULKAN_SDK}" ]; then
+            echo "VULKAN_SDK found in cache at ${VULKAN_SDK}"
+          else
+            mkdir -p "${VULKAN_DIR}"
+            wget -qO /tmp/vulkan_sdk.tar.xz \
+              "https://sdk.lunarg.com/sdk/download/${VULKAN_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_VERSION}.tar.xz"
+            tar -xf /tmp/vulkan_sdk.tar.xz -C "${VULKAN_DIR}"
+            rm /tmp/vulkan_sdk.tar.xz
+          fi
+
+          echo "VULKAN_SDK=${VULKAN_SDK}" >> "$GITHUB_ENV"
+          echo "PATH=${VULKAN_SDK}/bin:$PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${VULKAN_SDK}/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Configure CMake
+        shell: bash
+        run: cmake -S . -B build -G Ninja --config Release
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config ${{ matrix.configuration }} --parallel
+

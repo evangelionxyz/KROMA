@@ -11,7 +11,6 @@
 extern "C" {
 #endif
 
-
 typedef struct ShaderReflectionInfo {
     uint64_t num_uniform_buffers;
     uint64_t num_samplers;
